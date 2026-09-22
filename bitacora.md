@@ -379,3 +379,87 @@ Si el proyecto migra de este array en memoria a una base de datos real
   alcance, anotada para el planificador.
 - No se implementó código real; esto es solo el contrato/diseño en texto
   para que el fullstack lo implemente.
+
+## 3. disenador-ux
+Diseño de pantallas — CRM Contactos (UX/Producto)
+
+===================================================================
+PANTALLA 1: DASHBOARD (ruta sugerida: /  o /index.html)
+===================================================================
+
+1. Encabezado (parte superior de la pantalla)
+- Título: "Dashboard de Contactos" (h1).
+- Subtítulo/dato: "Total de contactos: N" donde N = suma de los tres valores devueltos por GET /api/contactos/resumen (lead + aceptado + rechazado). No requiere una llamada aparte a /api/contactos; se calcula sumando las claves del resumen.
+- Este bloque va en la parte superior, ancho completo, alineado a la izquierda.
+
+2. Gráfica circular (debajo del encabezado, centrada o alineada a la izquierda en un bloque propio)
+- Fuente de datos: GET /api/contactos/resumen → { lead, aceptado, rechazado }.
+- Tipo: gráfica de pastel (pie chart) simple, dibujada a mano con SVG (un <path> o varios <circle> con stroke-dasharray por segmento). Sin librerías de gráficos.
+- Un segmento por status, tamaño proporcional al conteo:
+  - Lead → color amarillo (sugerido #F5C518 o similar amarillo medio, no pastel muy claro para que se distinga bien sobre fondo blanco).
+  - Aceptado → color verde (sugerido #2E9E44 o similar verde medio).
+  - Rechazado → color rojo (sugerido #D9362E o similar rojo medio).
+- Caso "sin datos": si total = 0 (los tres valores en 0), no se dibuja el círculo relleno; se muestra un círculo gris vacío (outline) con el texto "Sin contactos registrados" debajo o superpuesto.
+- Tamaño sugerido: circunferencia de ~200-250px de diámetro, tamaño fijo (no responsive complejo, esto es proyecto de prueba).
+
+3. Leyenda
+- Va inmediatamente a la derecha de la gráfica en pantallas anchas, o debajo de la gráfica si se apila verticalmente (decisión del fullstack, lo simple que sea de implementar en CSS plano, sin media queries complejas).
+- Cada línea de la leyenda: un cuadrito de color (mismo color que el segmento) + texto "Lead: N" / "Aceptado: N" / "Rechazado: N", usando los mismos tres colores definidos arriba.
+- Orden fijo de arriba a abajo: Lead, Aceptado, Rechazado (mismo orden que las claves del JSON de resumen, para consistencia visual).
+
+4. Navegación
+- Un botón o link visible, tipo botón normal (no flotante, no ícono), ubicado en el encabezado o justo debajo del título, con texto "Ver contactos" o "Ir a Contactos", que lleva a la pantalla de Contactos (ruta sugerida /contactos.html).
+- No hace falta menú de navegación complejo; es un link simple ya que solo hay dos pantallas. Opcional: en la pantalla de Contactos poner un link de regreso "Volver al Dashboard" en la parte superior, para poder ir y volver.
+
+===================================================================
+PANTALLA 2: CONTACTOS (ruta sugerida: /contactos.html)
+===================================================================
+
+1. Encabezado
+- Título: "Contactos" (h1).
+- Link de regreso al Dashboard arriba (ver punto de navegación de Pantalla 1).
+
+2. Formulario "Agregar contacto"
+- Ubicación: bloque propio arriba de la tabla (entre el título y la tabla), siempre visible (no en modal, no colapsable) — es lo más simple de implementar y de probar.
+- Campos, en este orden:
+  - Nombre (input text) — obligatorio.
+  - Email (input email) — obligatorio.
+  - Teléfono (input text) — opcional, placeholder "Opcional".
+  - Status: NO se incluye selector de status en el alta. Si se omite, el backend asigna 'lead' por default (según el contrato de API), así que el formulario de creación no necesita campo de status; todo contacto nuevo nace como "Lead". Esto simplifica el formulario y es consistente con el modelo de datos.
+- Botón "Agregar contacto" al final del formulario.
+- Validación:
+  - Si falta Nombre o Email al enviar, no se hace el POST; se marca el/los campo(s) faltante(s) con un mensaje de texto simple en rojo debajo del campo (ej. "Este campo es obligatorio") y foco en el primer campo con error. Puede usarse la validación nativa del navegador (atributo `required` en los inputs) como mecanismo principal, ya que es lo más simple en JS vanilla — no hace falta lógica de validación custom más allá de eso.
+  - Si el servidor rechaza la creación (ej. responde error), se muestra un mensaje de texto simple arriba del formulario, ej. "No se pudo agregar el contacto. Verifica los datos." — sin modal, sin alert() bloqueante si se puede evitar, pero un alert() nativo es aceptable dado que es proyecto de prueba local.
+- Al crear exitosamente: se limpia el formulario y la tabla se actualiza (recarga la lista desde GET /api/contactos o inserta la fila nueva directamente con la respuesta del POST).
+
+3. Tabla de contactos (debajo del formulario)
+- Columnas, en este orden exacto:
+  1. Nombre
+  2. Email
+  3. Teléfono (si el valor es null/vacío, mostrar un guion "—" en la celda, no dejar vacío sin indicación)
+  4. Status
+  5. Acciones
+- Una fila por contacto, en el orden en que los devuelve GET /api/contactos (no requiere ordenamiento especial).
+- Columna Status: en vez de texto plano, se muestra un <select> (dropdown) con las tres opciones (Lead / Aceptado / Rechazado), con la opción actual seleccionada. Este es el mecanismo para cambiar el status de un contacto:
+  - Al cambiar el valor del <select>, se dispara inmediatamente un PUT /api/contactos/:id con { status: nuevoValor } (evento `change` del select, sin botón de confirmar aparte — así se mantiene simple en JS vanilla).
+  - Mientras se guarda, no hace falta spinner ni feedback visual complejo; si falla, revertir el <select> al valor anterior y mostrar un alert() simple con el error.
+  - Sugerencia de color de fondo en el <select> o en un punto/badge junto a él, usando los mismos tres colores del Dashboard (amarillo=lead, verde=aceptado, rojo=rechazado), para reforzar consistencia visual entre pantallas. Esto es opcional/estético, no bloqueante.
+- Columna Acciones: dos botones o links de texto por fila:
+  - "Editar": al hacer click, convierte las celdas de Nombre, Email y Teléfono de esa fila en inputs editables in-place (misma fila), con un botón "Guardar" y "Cancelar" que reemplazan temporalmente al botón "Editar"/"Eliminar". Al guardar, se hace PUT /api/contactos/:id con los campos modificados (nombre y email siguen siendo obligatorios: si se dejan vacíos, no se guarda y se muestra el mismo mensaje de campo obligatorio que en el alta). Esto evita necesidad de un modal aparte y es simple en JS vanilla con manipulación directa del DOM de la fila.
+  - "Eliminar": al hacer click, se muestra una confirmación antes de borrar. La forma más simple: usar `confirm()` nativo del navegador con el texto "¿Eliminar a [nombre]? Esta acción no se puede deshacer." Si el usuario confirma, se hace DELETE /api/contactos/:id y la fila se remueve de la tabla (o se vuelve a pedir la lista completa). Si cancela, no pasa nada.
+- Caso "sin contactos": si la lista está vacía, la tabla muestra una sola fila (o un párrafo debajo del encabezado de tabla) con el texto "No hay contactos todavía. Agrega el primero arriba."
+
+===================================================================
+NOTAS GENERALES (aplican a ambas pantallas)
+===================================================================
+- Sin animaciones (nada de transiciones CSS, fades, etc.).
+- Sin librerías de diseño (no Bootstrap, no Tailwind, no Material) — CSS plano.
+- Gráfica dibujada a mano en SVG, sin librería de charts.
+- Paleta de status fija y consistente en toda la app:
+  - Lead → amarillo
+  - Aceptado → verde
+  - Rechazado → rojo
+- Todo el feedback de error/confirmación puede resolverse con texto simple en la página o `alert()`/`confirm()` nativos — no se requiere modal custom ni librería de notificaciones, priorizando velocidad de implementación en JS vanilla.
+- Dos archivos HTML separados (Dashboard y Contactos) con navegación por links simples entre ellos, cada uno con su propio <script> vanilla que llama a los endpoints ya definidos por el arquitecto de datos.
+
+No se crearon archivos ni artifacts para esta entrega — el texto de arriba es la especificación completa lista para copiar a la bitácora del proyecto y para que el fullstack la traduzca a HTML/CSS/JS.
