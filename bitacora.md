@@ -463,3 +463,37 @@ NOTAS GENERALES (aplican a ambas pantallas)
 - Dos archivos HTML separados (Dashboard y Contactos) con navegación por links simples entre ellos, cada uno con su propio <script> vanilla que llama a los endpoints ya definidos por el arquitecto de datos.
 
 No se crearon archivos ni artifacts para esta entrega — el texto de arriba es la especificación completa lista para copiar a la bitácora del proyecto y para que el fullstack la traduzca a HTML/CSS/JS.
+
+## 4. fullstack
+Construí el CRM completo desde cero en /home/user/crm-contactos-agentes, siguiendo exactamente el contrato del arquitecto-datos y las pantallas del disenador-ux (verificados contra bitacora.md antes de empezar). Almacenamiento 100% en memoria (array), sin SQLite ni ningún paquete de base de datos, tal como indicó el override de esta corrida.
+
+Archivos creados:
+
+1. `/home/user/crm-contactos-agentes/contactosStore.js`
+   Módulo de almacenamiento en memoria. `let contactos = [...]` con los 9 contactos de ejemplo exactos (mismos ids, emails, teléfonos, status y creadoEn del enunciado), `let siguienteId = 10` (nunca se reutiliza). Exporta `listarTodos()`, `obtenerPorId(id)`, `crear(datos)` (asigna id/creadoEn, default status 'lead'), `actualizar(id, cambios)` (id y creadoEn son inmutables, se ignoran si vienen en cambios), `eliminar(id)` (retorna boolean), `resumenPorStatus()` (siempre retorna las 3 claves lead/aceptado/rechazado aunque estén en 0), y `STATUSES_VALIDOS`.
+
+2. `/home/user/crm-contactos-agentes/routes/contactos.js`
+   Router Express con las 6 rutas del contrato. `GET /resumen` está registrada ANTES de `GET /:id` para que Express no la confunda con un id. Validación: nombre/email obligatorios y no vacíos tras trim, email con regex simple, status debe ser uno de los 3 valores válidos (tanto en POST como en PUT, con status opcional en PUT). Todas las consultas usan los datos del body ya validados (no aplica en memoria, pero se mantiene el patrón de nunca confiar en input crudo). try/catch en cada handler, códigos 200/201/204/400/404 según el contrato, formato de error `{error: "mensaje"}`.
+
+3. `/home/user/crm-contactos-agentes/server.js`
+   Levanta Express, `express.json()`, sirve `public/` como estático, monta el router en `/api/contactos`, escucha en `process.env.PORT || 3000`.
+
+4. `/home/user/crm-contactos-agentes/public/index.html`
+   Dashboard: título, subtítulo con total (suma del resumen), gráfica de pastel dibujada a mano en SVG (círculos con stroke-dasharray, sin Chart.js), colores lead=#F5C518, aceptado=#2E9E44, rechazado=#D9362E, leyenda con cuadritos de color en orden Lead/Aceptado/Rechazado, caso "sin datos" con círculo gris outline y texto "Sin contactos registrados", link "Ver contactos" a contactos.html.
+
+5. `/home/user/crm-contactos-agentes/public/contactos.html`
+   Pantalla de gestión: link "Volver al Dashboard", formulario siempre visible (Nombre/Email required, Teléfono opcional, sin campo status), tabla con columnas Nombre/Email/Teléfono("—" si null)/Status/Acciones. El `<select>` de status dispara PUT inmediato en `change`, revierte y hace `alert()` si falla. "Editar" convierte la fila en inputs in-place con Guardar/Cancelar (PUT con validación de obligatorios). "Eliminar" pide `confirm()` con el nombre del contacto antes del DELETE. Mensaje "No hay contactos todavía. Agrega el primero arriba." cuando la lista está vacía. CSS plano, sin animaciones, sin librerías.
+
+6. `/home/user/crm-contactos-agentes/package.json` (+ `package-lock.json`, `node_modules/` sin trackear en git) — mínimo, solo `express` como dependencia, creado temporalmente para poder levantar y probar el servidor yo mismo. El agente devops puede revisarlo/completarlo después.
+
+Pruebas manuales que corrí contra el servidor real (puerto 3456, luego detenido — no quedó ningún proceso node corriendo):
+- GET /api/contactos → 200, lista completa de 9.
+- GET /api/contactos/resumen → 200, `{"lead":4,"aceptado":3,"rechazado":2}` (suma 9, correcto).
+- GET /api/contactos/3 → 200 con el contacto correcto; /api/contactos/abc → 400 id inválido; /api/contactos/999 → 404.
+- POST válido sin status → 201, status default 'lead', id=10, creadoEn autogenerado.
+- POST sin nombre → 400; POST con email mal formado → 400; POST con status inválido → 400.
+- PUT status → 200 actualizado; PUT nombre vacío → 400; PUT a id inexistente → 404.
+- DELETE existente → 204; DELETE repetido → 404; DELETE con id no entero → 400.
+- index.html y contactos.html sirven vía express.static con 200.
+
+No agregué persistencia a disco, autenticación, paginación ni búsqueda (fuera de alcance, según instrucción). No hice commit de los archivos — quedan sin stagear en git para que el flujo del proyecto decida cuándo commitear (siguiente paso natural sería el agente tester/revisor).

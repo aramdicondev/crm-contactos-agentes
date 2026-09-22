@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contactos</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: #ffffff;
+    color: #1a1a1a;
+  }
+  a.volver {
+    display: inline-block;
+    margin-bottom: 16px;
+    color: #2b6cb0;
+    text-decoration: none;
+  }
+  a.volver:hover {
+    text-decoration: underline;
+  }
+  h1 {
+    margin: 0 0 16px 0;
+  }
+  h2 {
+    font-size: 18px;
+    margin: 0 0 12px 0;
+  }
+  .panel-form {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 24px;
+    max-width: 500px;
+  }
+  .campo {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .campo label {
+    font-size: 13px;
+    font-weight: bold;
+  }
+  .campo input {
+    padding: 6px 8px;
+    font-size: 14px;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+  }
+  .btn {
+    padding: 8px 16px;
+    background: #2b6cb0;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-secundario {
+    background: #888;
+  }
+  .btn-peligro {
+    background: #c0392b;
+  }
+  .btn-pequeno {
+    padding: 4px 10px;
+    font-size: 13px;
+    margin-right: 6px;
+  }
+  .mensaje-error {
+    color: #c0392b;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 900px;
+  }
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 14px;
+  }
+  th {
+    background: #f4f4f4;
+  }
+  select.status-select {
+    padding: 4px 6px;
+    font-size: 13px;
+    border-radius: 3px;
+    border: 1px solid #aaa;
+  }
+  .status-lead { background: #FCEEB0; }
+  .status-aceptado { background: #C9EAD0; }
+  .status-rechazado { background: #F3C6C0; }
+  .fila-editable input {
+    padding: 4px 6px;
+    font-size: 13px;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    width: 100%;
+  }
+  .sin-contactos td {
+    text-align: center;
+    color: #555;
+    padding: 20px;
+  }
+</style>
+</head>
+<body>
+  <a class="volver" href="index.html">&larr; Volver al Dashboard</a>
+  <h1>Contactos</h1>
+
+  <section class="panel-form">
+    <h2>Agregar contacto</h2>
+    <div id="mensaje-error-form" class="mensaje-error" style="display:none;"></div>
+    <form id="form-agregar">
+      <div class="campo">
+        <label for="input-nombre">Nombre</label>
+        <input type="text" id="input-nombre" name="nombre" required>
+      </div>
+      <div class="campo">
+        <label for="input-email">Email</label>
+        <input type="email" id="input-email" name="email" required>
+      </div>
+      <div class="campo">
+        <label for="input-telefono">Teléfono</label>
+        <input type="text" id="input-telefono" name="telefono" placeholder="Opcional">
+      </div>
+      <button type="submit" class="btn">Agregar contacto</button>
+    </form>
+  </section>
+
+  <table id="tabla-contactos">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Email</th>
+        <th>Teléfono</th>
+        <th>Status</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-contactos">
+      <tr><td colspan="5">Cargando...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    const STATUSES = ['lead', 'aceptado', 'rechazado'];
+    const ETIQUETAS = { lead: 'Lead', aceptado: 'Aceptado', rechazado: 'Rechazado' };
+
+    function escaparHtml(texto) {
+      const div = document.createElement('div');
+      div.textContent = texto;
+      return div.innerHTML;
+    }
+
+    function crearSelectStatus(statusActual) {
+      const select = document.createElement('select');
+      select.className = `status-select status-${statusActual}`;
+      select.dataset.valorPrevio = statusActual;
+      STATUSES.forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = ETIQUETAS[s];
+        if (s === statusActual) opt.selected = true;
+        select.appendChild(opt);
+      });
+      return select;
+    }
+
+    async function cargarContactos() {
+      const tbody = document.getElementById('tbody-contactos');
+      try {
+        const resp = await fetch('/api/contactos');
+        if (!resp.ok) throw new Error('No se pudo cargar la lista');
+        const contactos = await resp.json();
+
+        tbody.innerHTML = '';
+
+        if (contactos.length === 0) {
+          const tr = document.createElement('tr');
+          tr.className = 'sin-contactos';
+          tr.innerHTML = '<td colspan="5">No hay contactos todavía. Agrega el primero arriba.</td>';
+          tbody.appendChild(tr);
+          return;
+        }
+
+        contactos.forEach((contacto) => {
+          tbody.appendChild(construirFila(contacto));
+        });
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5">Error al cargar los contactos.</td></tr>';
+      }
+    }
+
+    function construirFila(contacto) {
+      const tr = document.createElement('tr');
+      tr.dataset.id = contacto.id;
+
+      const tdNombre = document.createElement('td');
+      tdNombre.textContent = contacto.nombre;
+      tdNombre.dataset.campo = 'nombre';
+
+      const tdEmail = document.createElement('td');
+      tdEmail.textContent = contacto.email;
+      tdEmail.dataset.campo = 'email';
+
+      const tdTelefono = document.createElement('td');
+      tdTelefono.textContent = contacto.telefono ? contacto.telefono : '—';
+      tdTelefono.dataset.campo = 'telefono';
+
+      const tdStatus = document.createElement('td');
+      const select = crearSelectStatus(contacto.status);
+      select.addEventListener('change', () => onCambiarStatus(contacto.id, select));
+      tdStatus.appendChild(select);
+
+      const tdAcciones = document.createElement('td');
+      tdAcciones.appendChild(construirAcciones(contacto, tr));
+
+      tr.appendChild(tdNombre);
+      tr.appendChild(tdEmail);
+      tr.appendChild(tdTelefono);
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdAcciones);
+
+      return tr;
+    }
+
+    function construirAcciones(contacto, tr) {
+      const contenedor = document.createElement('span');
+
+      const btnEditar = document.createElement('button');
+      btnEditar.textContent = 'Editar';
+      btnEditar.className = 'btn btn-pequeno';
+      btnEditar.addEventListener('click', () => activarEdicion(contacto, tr));
+
+      const btnEliminar = document.createElement('button');
+      btnEliminar.textContent = 'Eliminar';
+      btnEliminar.className = 'btn btn-peligro btn-pequeno';
+      btnEliminar.addEventListener('click', () => onEliminar(contacto, tr));
+
+      contenedor.appendChild(btnEditar);
+      contenedor.appendChild(btnEliminar);
+      return contenedor;
+    }
+
+    async function onCambiarStatus(id, select) {
+      const nuevoValor = select.value;
+      const previo = select.dataset.valorPrevio || nuevoValor;
+
+      try {
+        const resp = await fetch(`/api/contactos/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: nuevoValor }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo actualizar el status');
+        }
+        select.className = `status-select status-${nuevoValor}`;
+        select.dataset.valorPrevio = nuevoValor;
+      } catch (err) {
+        select.value = previo;
+        select.className = `status-select status-${previo}`;
+        alert(err.message);
+      }
+    }
+
+    function activarEdicion(contacto, tr) {
+      const tdNombre = tr.querySelector('[data-campo="nombre"]');
+      const tdEmail = tr.querySelector('[data-campo="email"]');
+      const tdTelefono = tr.querySelector('[data-campo="telefono"]');
+      const tdAcciones = tr.lastElementChild;
+
+      const valorNombreOriginal = contacto.nombre;
+      const valorEmailOriginal = contacto.email;
+      const valorTelefonoOriginal = contacto.telefono || '';
+
+      tdNombre.innerHTML = '';
+      const inputNombre = document.createElement('input');
+      inputNombre.type = 'text';
+      inputNombre.value = valorNombreOriginal;
+      tdNombre.appendChild(inputNombre);
+      tdNombre.classList.add('fila-editable');
+
+      tdEmail.innerHTML = '';
+      const inputEmail = document.createElement('input');
+      inputEmail.type = 'email';
+      inputEmail.value = valorEmailOriginal;
+      tdEmail.appendChild(inputEmail);
+      tdEmail.classList.add('fila-editable');
+
+      tdTelefono.innerHTML = '';
+      const inputTelefono = document.createElement('input');
+      inputTelefono.type = 'text';
+      inputTelefono.value = valorTelefonoOriginal;
+      tdTelefono.appendChild(inputTelefono);
+      tdTelefono.classList.add('fila-editable');
+
+      tdAcciones.innerHTML = '';
+
+      const mensajeError = document.createElement('div');
+      mensajeError.className = 'mensaje-error';
+      mensajeError.style.display = 'none';
+      tdNombre.appendChild(mensajeError);
+
+      const btnGuardar = document.createElement('button');
+      btnGuardar.textContent = 'Guardar';
+      btnGuardar.className = 'btn btn-pequeno';
+      btnGuardar.addEventListener('click', async () => {
+        const nombre = inputNombre.value.trim();
+        const email = inputEmail.value.trim();
+        const telefono = inputTelefono.value.trim();
+
+        if (!nombre || !email) {
+          mensajeError.textContent = 'Nombre y email son obligatorios.';
+          mensajeError.style.display = 'block';
+          return;
+        }
+
+        try {
+          const resp = await fetch(`/api/contactos/${contacto.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, email, telefono: telefono || null }),
+          });
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.error || 'No se pudo guardar el contacto');
+          }
+          const actualizado = await resp.json();
+          const nuevaFila = construirFila(actualizado);
+          tr.replaceWith(nuevaFila);
+        } catch (err) {
+          mensajeError.textContent = err.message;
+          mensajeError.style.display = 'block';
+        }
+      });
+
+      const btnCancelar = document.createElement('button');
+      btnCancelar.textContent = 'Cancelar';
+      btnCancelar.className = 'btn btn-secundario btn-pequeno';
+      btnCancelar.addEventListener('click', () => {
+        const filaOriginal = construirFila(contacto);
+        tr.replaceWith(filaOriginal);
+      });
+
+      tdAcciones.appendChild(btnGuardar);
+      tdAcciones.appendChild(btnCancelar);
+    }
+
+    async function onEliminar(contacto, tr) {
+      const confirmado = confirm(`¿Eliminar a ${contacto.nombre}? Esta acción no se puede deshacer.`);
+      if (!confirmado) return;
+
+      try {
+        const resp = await fetch(`/api/contactos/${contacto.id}`, { method: 'DELETE' });
+        if (!resp.ok && resp.status !== 204) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo eliminar el contacto');
+        }
+        tr.remove();
+
+        const tbody = document.getElementById('tbody-contactos');
+        if (tbody.children.length === 0) {
+          const trVacio = document.createElement('tr');
+          trVacio.className = 'sin-contactos';
+          trVacio.innerHTML = '<td colspan="5">No hay contactos todavía. Agrega el primero arriba.</td>';
+          tbody.appendChild(trVacio);
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('form-agregar').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+
+      const mensajeError = document.getElementById('mensaje-error-form');
+      mensajeError.style.display = 'none';
+
+      const nombre = document.getElementById('input-nombre').value.trim();
+      const email = document.getElementById('input-email').value.trim();
+      const telefono = document.getElementById('input-telefono').value.trim();
+
+      if (!nombre || !email) {
+        mensajeError.textContent = 'Nombre y email son obligatorios.';
+        mensajeError.style.display = 'block';
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/contactos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, email, telefono: telefono || undefined }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo agregar el contacto. Verifica los datos.');
+        }
+
+        document.getElementById('form-agregar').reset();
+        await cargarContactos();
+      } catch (err) {
+        mensajeError.textContent = err.message;
+        mensajeError.style.display = 'block';
+      }
+    });
+
+    cargarContactos();
+  </script>
+</body>
+</html>

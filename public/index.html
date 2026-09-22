@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Contactos</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: #ffffff;
+    color: #1a1a1a;
+  }
+  header {
+    margin-bottom: 24px;
+  }
+  h1 {
+    margin: 0 0 8px 0;
+  }
+  .subtitulo {
+    color: #444;
+    margin: 0 0 16px 0;
+  }
+  .btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #2b6cb0;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .panel-grafica {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 32px;
+  }
+  .leyenda {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .leyenda li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 16px;
+  }
+  .cuadro-color {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    border-radius: 2px;
+  }
+  .sin-datos-texto {
+    fill: #666;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Dashboard de Contactos</h1>
+    <p class="subtitulo" id="subtitulo">Total de contactos: ...</p>
+    <a class="btn" href="contactos.html">Ver contactos</a>
+  </header>
+
+  <section class="panel-grafica">
+    <div id="grafica-container"></div>
+    <ul class="leyenda" id="leyenda"></ul>
+  </section>
+
+  <script>
+    const COLORES = {
+      lead: '#F5C518',
+      aceptado: '#2E9E44',
+      rechazado: '#D9362E',
+    };
+    const ETIQUETAS = {
+      lead: 'Lead',
+      aceptado: 'Aceptado',
+      rechazado: 'Rechazado',
+    };
+    const ORDEN = ['lead', 'aceptado', 'rechazado'];
+
+    function construirSVGVacio() {
+      const size = 220;
+      const r = 100;
+      const cx = size / 2;
+      const cy = size / 2;
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#cccccc" stroke-width="2"></circle>
+          <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" class="sin-datos-texto">Sin contactos registrados</text>
+        </svg>
+      `;
+    }
+
+    function construirSVGPastel(resumen, total) {
+      const size = 220;
+      const r = 100;
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // Truco para dibujar un "pastel" relleno con <circle> + stroke-dasharray:
+      // el radio del trazo es la mitad del radio visual, y el stroke-width
+      // (= radio visual) hace que el trazo cubra desde el centro hasta el borde.
+      const rReal = r / 2;
+      const circunferenciaReal = 2 * Math.PI * rReal;
+      let acumulado = 0;
+      let segmentos = '';
+
+      ORDEN.forEach((status) => {
+        const valor = resumen[status] || 0;
+        if (valor === 0) return;
+
+        const fraccion = valor / total;
+        const largoTrazo = fraccion * circunferenciaReal;
+        const espacioRestante = circunferenciaReal - largoTrazo;
+        const offset = -acumulado * circunferenciaReal;
+
+        segmentos += `
+          <circle
+            cx="${cx}" cy="${cy}" r="${rReal}"
+            fill="none"
+            stroke="${COLORES[status]}"
+            stroke-width="${r}"
+            stroke-dasharray="${largoTrazo} ${espacioRestante}"
+            stroke-dashoffset="${offset}"
+            transform="rotate(-90 ${cx} ${cy})"
+          ></circle>
+        `;
+
+        acumulado += fraccion;
+      });
+
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+          ${segmentos}
+        </svg>
+      `;
+    }
+
+    function renderLeyenda(resumen) {
+      const ul = document.getElementById('leyenda');
+      ul.innerHTML = ORDEN.map((status) => `
+        <li>
+          <span class="cuadro-color" style="background:${COLORES[status]}"></span>
+          <span>${ETIQUETAS[status]}: ${resumen[status] || 0}</span>
+        </li>
+      `).join('');
+    }
+
+    async function cargarResumen() {
+      try {
+        const resp = await fetch('/api/contactos/resumen');
+        if (!resp.ok) throw new Error('No se pudo obtener el resumen');
+        const resumen = await resp.json();
+        const total = (resumen.lead || 0) + (resumen.aceptado || 0) + (resumen.rechazado || 0);
+
+        document.getElementById('subtitulo').textContent = `Total de contactos: ${total}`;
+
+        const contenedor = document.getElementById('grafica-container');
+        contenedor.innerHTML = total === 0
+          ? construirSVGVacio()
+          : construirSVGPastel(resumen, total);
+
+        renderLeyenda(resumen);
+      } catch (err) {
+        document.getElementById('subtitulo').textContent = 'Total de contactos: error al cargar';
+        document.getElementById('grafica-container').innerHTML = construirSVGVacio();
+      }
+    }
+
+    cargarResumen();
+  </script>
+</body>
+</html>
