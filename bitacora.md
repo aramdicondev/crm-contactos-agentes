@@ -758,3 +758,26 @@ El módulo arranca con **9 contactos de ejemplo hardcodeados** (ids 1 a 9) y un 
 ---
 
 Archivo relevante: /home/user/crm-contactos-agentes/DOCUMENTACION.md (nuevo, único archivo creado/modificado).
+
+## 8. devops
+Trabajo de devops completado en /home/user/crm-contactos-agentes. No se modificó ningún archivo de código de la app (server.js, contactosStore.js, routes/contactos.js, public/*.html).
+
+Archivos revisados sin cambios (ya estaban correctos):
+- /home/user/crm-contactos-agentes/package.json — ya tenía `"start": "node server.js"`, solo `express` (`^4.19.2`) como dependencia (sin better-sqlite3/sqlite3), nombre/versión/descripción razonables. Verifiqué que `express@4.22.3` instalado en node_modules es compatible con el rango declarado. No hizo falta tocarlo.
+
+Archivos modificados:
+- /home/user/crm-contactos-agentes/.gitignore — completado. Antes solo tenía `node_modules/`; agregué `.env` (por si en el futuro se usa alguna variable sensible, aunque hoy el proyecto no la necesita) y `npm-debug.log*`. Confirmé que no existe ningún archivo `.db` en el proyecto (es 100% en memoria, según contactosStore.js), así que no agregué ninguna entrada de base de datos.
+
+Archivos creados:
+- /home/user/crm-contactos-agentes/Dockerfile — imagen simple basada en `node:20-alpine`: copia `package.json`/`package-lock.json`, corre `npm install --omit=dev`, copia el resto del código, expone el puerto 3000 y arranca con `npm start`. No inicializa ninguna base de datos (no aplica). Sin configuración de producción, sin multi-stage, sin orquestación — solo lo necesario para `docker build` + `docker run -p 3000:3000 <imagen>`.
+- /home/user/crm-contactos-agentes/.dockerignore — excluye `node_modules/`, `.git/`, `.gitignore`, `Dockerfile`, `.dockerignore` y `*.md` de la imagen, para que el build no arrastre el node_modules local ni archivos innecesarios.
+
+Verificación de credenciales y rutas absolutas:
+- Revisé server.js, contactosStore.js, routes/contactos.js, public/index.html, public/contactos.html, package.json, package-lock.json y el Dockerfile: no encontré credenciales, tokens, API keys ni rutas absolutas de esta máquina hardcodeadas en ningún archivo de código o configuración.
+- El único lugar donde aparece la ruta absoluta `/home/user/crm-contactos-agentes/...` es dentro de `bitacora.md`, en las entradas de log de los otros agentes (arquitecto-datos, fullstack, tester, documentación) que narran su propio trabajo — es contenido de bitácora/histórico, no código ni configuración, así que no lo toqué (lo reporto como pediste, sin corregirlo). Las menciones a `http://localhost:3000` en `bitacora.md` y `DOCUMENTACION.md` son instrucciones de uso local normales, no credenciales.
+
+Pruebas realizadas:
+- `npm start` (con Node 22.22.2 / npm 10.9.7 ya instalados en el entorno): el servidor levantó en el puerto 3000 y respondió `HTTP 200` tanto en `/` como en `/api/contactos`.
+- Intenté `docker build` para validar el Dockerfile end-to-end, pero el daemon de Docker no está disponible en este entorno sandbox (`/var/run/docker.sock` no existe), así que no pude ejecutar el build real. El Dockerfile es estándar y minimalista (una sola etapa, sin dependencias exóticas), por lo que el riesgo de que falle en una máquina con Docker real es bajo, pero recomiendo que alguien con Docker disponible confirme `docker build -t crm-contactos-agentes . && docker run -p 3000:3000 crm-contactos-agentes` antes de darlo por completamente verificado.
+
+Fuera de alcance (como se pidió): no agregué configuración de nube, CI/CD, healthchecks de producción, usuario no-root en el Dockerfile, ni nada orientado a despliegue remoto — el proyecto sigue siendo estrictamente para uso local.
