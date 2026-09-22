@@ -497,3 +497,50 @@ Pruebas manuales que corrí contra el servidor real (puerto 3456, luego detenido
 - index.html y contactos.html sirven vía express.static con 200.
 
 No agregué persistencia a disco, autenticación, paginación ni búsqueda (fuera de alcance, según instrucción). No hice commit de los archivos — quedan sin stagear en git para que el flujo del proyecto decida cuándo commitear (siguiente paso natural sería el agente tester/revisor).
+
+## 5. tester
+LISTO — todos los casos pasaron
+
+Resumen de lo probado (servidor levantado con `PORT=3131 node server.js`, sin errores en el arranque):
+
+1. Arranque del servidor: OK, sin errores, log "CRM Contactos escuchando en el puerto 3131".
+
+2. Endpoints API (routes/contactos.js + contactosStore.js):
+   - GET /api/contactos → 200, array de 9 contactos iniciales (ids 1-9).
+   - GET /api/contactos/resumen (inicial) → 200, {"lead":4,"aceptado":3,"rechazado":2}, coincide con el array.
+   - POST válido (nombre+email) → 201, id=10, status default 'lead' correctamente aplicado.
+   - POST con status="pendiente" (inválido) → 400 {"error":"status debe ser uno de..."}, y se confirmó que NO se guardó (el conteo del array no subió por ese intento).
+   - POST sin nombre → 400 {"error":"nombre es obligatorio"}, no se guardó.
+   - POST sin email → 400 {"error":"email es obligatorio..."}, no se guardó.
+   - POST con email con formato inválido ("no-es-email") → 400, no se guardó.
+   - GET /api/contactos/:id válido → 200 con el contacto correcto.
+   - GET /api/contactos/:id no entero ("abc") → 400 {"error":"id inválido"}.
+   - GET /api/contactos/:id inexistente (999) → 404.
+   - PUT status de un contacto (lead→aceptado) → 200, y GET /resumen inmediatamente después reflejó el cambio (lead:5→4, aceptado:3→4).
+   - PUT con status inválido → 400, no se aplicó.
+   - PUT a id inexistente → 404.
+   - DELETE de contacto existente → 204; luego confirmado que ya no aparece en GET /api/contactos (volvió a 9) ni en GET /resumen (volvió a lead:4/aceptado:3/rechazado:2).
+   - DELETE de id ya eliminado → 404.
+   - Verificación de no reutilización de ids: tras eliminar el id 10 y crear uno nuevo, el nuevo contacto recibió id=11 (no reutilizó el hueco del 10) — confirma que siguienteId sigue avanzando de forma monótona.
+
+3. Persistencia (comportamiento esperado de NO persistir):
+   - Se mató el proceso del servidor (kill -9) y se volvió a levantar en el mismo puerto.
+   - Tras el reinicio: GET /api/contactos devolvió exactamente los 9 contactos hardcodeados originales (ids 1-9, mismos nombres: Ana Torres … Irene Castro).
+   - GET /resumen volvió a {"lead":4,"aceptado":3,"rechazado":2}.
+   - Un nuevo POST tras el reinicio recibió id=10, confirmando que siguienteId se reinicializó a 10 (no quedó en 12 del proceso anterior). Esto confirma que no hay ningún intento de persistencia a disco (no hay archivo de datos, no hay SQLite; contactosStore.js usa solo un array en memoria con `let`, reinicializado en cada `require` del módulo al arrancar el proceso).
+
+4. Archivos estáticos (public/ vía express.static):
+   - GET /index.html → 200.
+   - GET / → 200 (sirve index.html por defecto).
+   - GET /contactos.html → 200.
+   - Revisión de código de public/index.html: hace fetch a /api/contactos/resumen, calcula el total, dibuja un gráfico de pastel en SVG (o el SVG "sin datos" si total=0) y una leyenda con colores por status (lead/aceptado/rechazado) — consistente con el diseño de dashboard esperado.
+   - Revisión de código de public/contactos.html: formulario de alta (nombre, email, teléfono opcional) que hace POST y valida nombre/email en cliente antes de enviar; tabla que hace GET a /api/contactos y renderiza filas; cada fila tiene un `<select>` de status que dispara PUT on-change (con rollback visual si falla); botones Editar (convierte la fila en inputs editables, Guardar hace PUT, Cancelar restaura) y Eliminar (confirm() + DELETE, remueve la fila del DOM). El flujo end-to-end del HTML/JS es consistente con el contrato de API verificado arriba. No se dispuso de herramienta de navegador real, así que esta parte se verificó por lectura de código, no por render visual.
+
+No se encontraron fallos. El servidor fue detenido al finalizar las pruebas (no quedan procesos node server.js corriendo).
+
+Archivos relevantes revisados:
+- /home/user/crm-contactos-agentes/server.js
+- /home/user/crm-contactos-agentes/contactosStore.js
+- /home/user/crm-contactos-agentes/routes/contactos.js
+- /home/user/crm-contactos-agentes/public/index.html
+- /home/user/crm-contactos-agentes/public/contactos.html
