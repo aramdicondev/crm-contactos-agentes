@@ -544,3 +544,38 @@ Archivos relevantes revisados:
 - /home/user/crm-contactos-agentes/routes/contactos.js
 - /home/user/crm-contactos-agentes/public/index.html
 - /home/user/crm-contactos-agentes/public/contactos.html
+
+## 6. revisor
+SEGUIR: se encontraron los siguientes problemas reales (no de estilo):
+
+1. **Manejo de errores — errores tragados sin loguear** (routes/contactos.js). Todos los bloques catch capturan `err` pero nunca lo loguean (ni `console.error(err)` ni logger alguno), solo responden 500 genérico. Esto dificulta el diagnóstico en producción. Ubicaciones exactas:
+   - líneas 26-28 (`GET /resumen`)
+   - líneas 35-37 (`GET /`)
+   - líneas 52-54 (`GET /:id`)
+   - líneas 83-85 (`POST /`)
+   - líneas 134-136 (`PUT /:id`)
+   - líneas 154-156 (`DELETE /:id`)
+   Corrección sugerida: `console.error(err)` (o logger) antes de responder 500 en cada catch.
+
+2. **Manejo de errores — falta middleware de manejo de errores global en server.js** (server.js, líneas 5-15). No hay `app.use((err, req, res, next) => {...})` después de registrar las rutas. Consecuencia concreta: si llega un body JSON malformado a cualquier endpoint POST/PUT, `express.json()` invoca `next(err)`, y como no hay handler propio, Express usa su manejador por defecto, que:
+   - responde con HTML (`Content-Type: text/html`), inconsistente con el resto de la API que siempre devuelve JSON;
+   - como `NODE_ENV` nunca se define (ni en server.js ni en package.json scripts), Express trata el entorno como "development" y **incluye el stack trace en la respuesta**, lo cual es una fuga de información en un endpoint público.
+   Corrección sugerida: agregar middleware de errores JSON al final de server.js y, en despliegue, fijar `NODE_ENV=production`.
+
+3. **Falta manejador 404 genérico para rutas no reconocidas** (server.js). Una ruta inexistente (ej. `/api/contactos/1/foo`, o cualquier ruta fuera de `/api/contactos` y `public/`) cae en el 404 HTML por defecto de Express, inconsistente con las respuestas JSON del resto de la API. Menor prioridad que los puntos 1 y 2, pero real.
+
+Verificaciones que SÍ pasaron (sin hallazgos):
+- No hay inyección SQL ni restos de `sql`, `sqlite3`, `better-sqlite3` ni ningún motor de base de datos en el código ni en package.json (confirmado: única dependencia es `express@^4.19.2`). El array en memoria en contactosStore.js es el único almacenamiento, como se esperaba.
+- Validación de entrada en routes/contactos.js es correcta: `validarNombre`, `validarEmail` (regex razonable) y `validarStatus` (contra `STATUSES_VALIDOS` = lead/aceptado/rechazado) se aplican consistentemente en POST y PUT antes de tocar el store; no hay mass-assignment (los campos se destructuran explícitamente, `id`/`creadoEn` nunca se sobreescriben).
+- Códigos de estado HTTP correctos en cada rama: 200 (GET/PUT ok), 201 (POST), 204 (DELETE ok), 400 (id inválido, validación de body), 404 (no encontrado), 500 (catch genérico).
+- Frontend (public/index.html, public/contactos.html): los fetch tienen manejo de error consistente (try/catch + `resp.ok`), no hay uso de `innerHTML` con datos de usuario sin sanitizar (se usa `textContent` para nombre/email/teléfono, evitando XSS reflejado); no se detectaron event listeners huérfanos (los nodos con listeners se reemplazan completos vía `replaceWith`/`innerHTML=''`, permitiendo GC normal). El JS está embebido inline en `<script>` dentro de ambos HTML en vez de archivos .js separados (public/index.html líneas 79-182, public/contactos.html líneas 157-423); es una cuestión organizativa menor, no un bug, se menciona solo porque el checklist lo pedía explícitamente.
+
+Archivos revisados (rutas absolutas):
+- /home/user/crm-contactos-agentes/server.js
+- /home/user/crm-contactos-agentes/contactosStore.js
+- /home/user/crm-contactos-agentes/routes/contactos.js
+- /home/user/crm-contactos-agentes/public/index.html
+- /home/user/crm-contactos-agentes/public/contactos.html
+- /home/user/crm-contactos-agentes/package.json
+
+**Nota:** esta fue una auditoría de una sola pasada según el alcance de esta corrida. No se volvió a invocar al fullstack para corregir estos hallazgos — quedan anotados aquí como referencia para una futura iteración.
